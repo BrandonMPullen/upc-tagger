@@ -400,16 +400,16 @@
   <span>No items yet.<br/>Scan or type a UPC to start.</span>
 </div>
 
-<script type="module">
-  import { BrowserMultiFormatReader, NotFoundException } from 'https://esm.sh/@zxing/library@0.21.3';
-
+<script>
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js');
   }
 
   let items = [];
   let scanning = false;
-  let codeReader = null;
+  let stream = null;
+  let animFrame = null;
+  let detector = null;
 
   const upcInput = document.getElementById('upc-input');
   const qtyInput = document.getElementById('qty-input');
@@ -433,7 +433,7 @@
     errorMsg.style.display = 'block';
     flashMsg.style.display = 'none';
     clearTimeout(showError._t);
-    showError._t = setTimeout(() => { errorMsg.style.display = 'none'; }, 3000);
+    showError._t = setTimeout(() => { errorMsg.style.display = 'none'; }, 3500);
   }
 
   function showFlash(msg) {
@@ -509,34 +509,57 @@
   addBtn.addEventListener('click', () => addItem(upcInput.value));
   upcInput.addEventListener('keydown', e => { if (e.key === 'Enter') addItem(upcInput.value); });
 
+  async function scanLoop() {
+    if (!scanning || !detector) return;
+    if (preview.readyState < 2) { animFrame = requestAnimationFrame(scanLoop); return; }
+    try {
+      const barcodes = await detector.detect(preview);
+      if (barcodes.length > 0) {
+        const code = barcodes[0].rawValue;
+        upcInput.value = code.replace(/\D/g, '');
+        stopScanner();
+        showFlash('Scanned — set quantity and tap Add.');
+        return;
+      }
+    } catch(e) {}
+    animFrame = requestAnimationFrame(scanLoop);
+  }
+
   scanBtn.addEventListener('click', async () => {
     if (scanning) return;
-    scanning = true;
-    scannerArea.style.display = 'block';
-    codeReader = new BrowserMultiFormatReader();
+
+    if (!('BarcodeDetector' in window)) {
+      showError('Barcode scanner not supported on this browser. Type UPC manually.');
+      return;
+    }
+
     try {
-      const devices = await BrowserMultiFormatReader.listVideoInputDevices();
-      const backCamera = devices.find(d => /back|rear|environment/i.test(d.label)) || devices[devices.length - 1];
-      const deviceId = backCamera ? backCamera.deviceId : undefined;
-      await codeReader.decodeFromVideoDevice(deviceId, preview, (result, err) => {
-        if (result) {
-          const code = result.getText();
-          upcInput.value = code;
-          stopScanner();
-          upcInput.focus();
-        }
+      const supported = await BarcodeDetector.getSupportedFormats();
+      detector = new BarcodeDetector({ formats: ['upc_a', 'upc_e', 'ean_13', 'ean_8', 'code_128', 'code_39'].filter(f => supported.includes(f)) });
+    } catch(e) {
+      showError('Could not initialize scanner. Type UPC manually.');
+      return;
+    }
+
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }
       });
-    } catch (err) {
-      showError('Camera unavailable. Type UPC manually.');
-      scannerArea.style.display = 'none';
-      scanning = false;
-      codeReader = null;
+      preview.srcObject = stream;
+      await preview.play();
+      scanning = true;
+      scannerArea.style.display = 'block';
+      animFrame = requestAnimationFrame(scanLoop);
+    } catch(e) {
+      showError('Camera permission denied. Type UPC manually.');
+      stopScanner();
     }
   });
 
   function stopScanner() {
-    if (!scanning) return;
-    if (codeReader) { try { codeReader.reset(); } catch(e) {} codeReader = null; }
+    if (animFrame) { cancelAnimationFrame(animFrame); animFrame = null; }
+    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+    preview.srcObject = null;
     scannerArea.style.display = 'none';
     scanning = false;
   }
@@ -545,7 +568,7 @@
 
   emailBtn.addEventListener('click', () => {
     if (!items.length) return;
-    const lines = items.map(x => x.upc + '  —  ' + x.qty + ' tag' + (x.qty !== 1 ? 's' : '')).join('\n');
+    const lines = items.map(x => x.upc + '  -  ' + x.qty + ' tag' + (x.qty !== 1 ? 's' : '')).join('\n');
     const total = items.reduce((s, x) => s + x.qty, 0);
     const body = encodeURIComponent('Tag list\n' + '='.repeat(30) + '\n\n' + lines + '\n\n' + '='.repeat(30) + '\nTotal tags: ' + total);
     window.location.href = 'mailto:?subject=' + encodeURIComponent('Tag list') + '&body=' + body;

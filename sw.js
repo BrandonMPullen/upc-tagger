@@ -1,10 +1,8 @@
-const CACHE = 'tag-tracker-v2';
+const CACHE = 'tag-tracker-v3';
 const ASSETS = [
   '/',
   '/index.html',
-  '/manifest.json',
-  'https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&display=swap',
-  'https://esm.sh/@zxing/library@0.21.3'
+  '/manifest.json'
 ];
 
 self.addEventListener('install', e => {
