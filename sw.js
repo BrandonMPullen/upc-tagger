@@ -1,10 +1,10 @@
-const CACHE = 'tag-tracker-v1';
+const CACHE = 'tag-tracker-v2';
 const ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
   'https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600&display=swap',
-  'https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js'
+  'https://esm.sh/@zxing/library@0.21.3'
 ];
 
 self.addEventListener('install', e => {

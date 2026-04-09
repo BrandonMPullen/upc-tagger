@@ -400,16 +400,16 @@
   <span>No items yet.<br/>Scan or type a UPC to start.</span>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
-<script>
+<script type="module">
+  import { BrowserMultiFormatReader, NotFoundException } from 'https://esm.sh/@zxing/library@0.21.3';
+
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js');
   }
 
   let items = [];
   let scanning = false;
-  let lastDetected = '';
-  let detectTimeout = null;
+  let codeReader = null;
 
   const upcInput = document.getElementById('upc-input');
   const qtyInput = document.getElementById('qty-input');
@@ -426,13 +426,14 @@
   const flashMsg = document.getElementById('flash-msg');
   const emailBtn = document.getElementById('email-btn');
   const clearBtn = document.getElementById('clear-btn');
+  const preview = document.getElementById('preview');
 
   function showError(msg) {
     errorMsg.textContent = msg;
     errorMsg.style.display = 'block';
     flashMsg.style.display = 'none';
     clearTimeout(showError._t);
-    showError._t = setTimeout(() => { errorMsg.style.display = 'none'; }, 2500);
+    showError._t = setTimeout(() => { errorMsg.style.display = 'none'; }, 3000);
   }
 
   function showFlash(msg) {
@@ -506,46 +507,36 @@
   }
 
   addBtn.addEventListener('click', () => addItem(upcInput.value));
-  upcInput.addEventListener('keydown', e => { if (e.key === 'Enter') { addItem(upcInput.value); } });
+  upcInput.addEventListener('keydown', e => { if (e.key === 'Enter') addItem(upcInput.value); });
 
-  scanBtn.addEventListener('click', () => {
+  scanBtn.addEventListener('click', async () => {
     if (scanning) return;
-    scannerArea.style.display = 'block';
     scanning = true;
-    lastDetected = '';
-    Quagga.init({
-      inputStream: {
-        name: 'Live',
-        type: 'LiveStream',
-        target: document.getElementById('preview'),
-        constraints: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
-      },
-      decoder: { readers: ['ean_reader', 'upc_reader', 'upc_e_reader', 'ean_8_reader'] },
-      locate: true
-    }, err => {
-      if (err) {
-        showError('Camera unavailable. Type UPC manually.');
-        scannerArea.style.display = 'none';
-        scanning = false;
-        return;
-      }
-      Quagga.start();
-    });
-    Quagga.onDetected(data => {
-      const code = data.codeResult.code;
-      if (code === lastDetected) return;
-      lastDetected = code;
-      clearTimeout(detectTimeout);
-      detectTimeout = setTimeout(() => { lastDetected = ''; }, 3000);
-      upcInput.value = code;
-      stopScanner();
-      upcInput.focus();
-    });
+    scannerArea.style.display = 'block';
+    codeReader = new BrowserMultiFormatReader();
+    try {
+      const devices = await BrowserMultiFormatReader.listVideoInputDevices();
+      const backCamera = devices.find(d => /back|rear|environment/i.test(d.label)) || devices[devices.length - 1];
+      const deviceId = backCamera ? backCamera.deviceId : undefined;
+      await codeReader.decodeFromVideoDevice(deviceId, preview, (result, err) => {
+        if (result) {
+          const code = result.getText();
+          upcInput.value = code;
+          stopScanner();
+          upcInput.focus();
+        }
+      });
+    } catch (err) {
+      showError('Camera unavailable. Type UPC manually.');
+      scannerArea.style.display = 'none';
+      scanning = false;
+      codeReader = null;
+    }
   });
 
   function stopScanner() {
     if (!scanning) return;
-    try { Quagga.stop(); } catch(e) {}
+    if (codeReader) { try { codeReader.reset(); } catch(e) {} codeReader = null; }
     scannerArea.style.display = 'none';
     scanning = false;
   }
