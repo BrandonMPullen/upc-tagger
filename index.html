@@ -479,7 +479,7 @@
     });
   }
 
-  function formatUPC(raw) {
+  function formatScanned(raw) {
     let digits = raw.replace(/\D/g, '');
     digits = digits.replace(/^0+/, '');
     digits = digits.slice(0, -1);
@@ -488,10 +488,17 @@
     return digits;
   }
 
+  function formatManual(raw) {
+    let digits = raw.replace(/\D/g, '');
+    if (digits.length === 11) return digits[0] + '-' + digits.slice(1, 6) + '-' + digits.slice(6);
+    if (digits.length === 10) return digits.slice(0, 5) + '-' + digits.slice(5);
+    return digits;
+  }
+
   function addItem(upc, autoAdded) {
     upc = (upc || '').trim().replace(/\D/g, '');
     if (!upc) { showError('Enter a UPC.'); return false; }
-    const formatted = formatUPC(upc);
+    const formatted = autoAdded ? formatScanned(upc) : formatManual(upc);
     const existing = items.find(x => x.raw === upc);
     if (existing) {
       existing.qty += 1;
